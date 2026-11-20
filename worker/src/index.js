@@ -8,7 +8,7 @@ function allowPath(path){return path==="data/books.json"||/^data\/books\/[a-zA-Z
 export default {async fetch(request,env){
 const origin=request.headers.get("Origin")||"", allowed=env.APP_ORIGIN||"https://wongtszshan.github.io";
 if(origin&&origin!==allowed)return reply({error:"Origin not allowed"},403,allowed);
-if(request.method==="OPTIONS")return reply({},204,allowed);
+if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":allowed,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key","Vary":"Origin"}});
 const url=new URL(request.url),repo=env.REPO||"wongtszshan/reading-notes",branch=env.BRANCH||"main";
 const authorized=!!env.WRITE_PASSWORD&&constantEqual(request.headers.get("X-Write-Key"),env.WRITE_PASSWORD);
 if(url.pathname==="/health")return reply({ok:true,authorized},authorized?200:401,allowed);
@@ -36,7 +36,7 @@ const current=await gh(path);
 if(current.status!==404&&!current.ok)return reply({error:"Cannot verify existing file"},502,allowed);
 const sha=current.ok?current.json.sha:null;
 if((input.sha||null)!==(sha||null))return reply({error:"版本冲突：云端文件已变化，请刷新后重试"},409,allowed);
-let encoded=input.encoding==="base64"?input.content:btoa(String.fromCharCode(...new TextEncoder().encode(input.content)));
+let encoded=input.content;if(input.encoding!=="base64"){const bytes=new TextEncoder().encode(input.content);let binary="";for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));encoded=btoa(binary);}
 const out=await gh(path,"PUT",{message:"notes: update "+path,content:encoded,branch,...(sha?{sha}:{})});
 if(!out.ok)return reply({error:"GitHub write failed "+out.status+": "+(out.json.message||"")},out.status===409?409:502,allowed);
 return reply({ok:true,commitSha:out.json.commit?.sha,sha:out.json.content?.sha},200,allowed);
