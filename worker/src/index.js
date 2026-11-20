@@ -11,10 +11,10 @@ if(origin&&origin!==allowed)return reply({error:"Origin not allowed"},403,allowe
 if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":allowed,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key","Vary":"Origin"}});
 const url=new URL(request.url),repo=env.REPO||"wongtszshan/reading-notes",branch=env.BRANCH||"main";
 const authorized=!!env.WRITE_PASSWORD&&constantEqual(request.headers.get("X-Write-Key"),env.WRITE_PASSWORD);
-if(url.pathname==="/health")return reply({ok:true,authorized},authorized?200:401,allowed);
+if(url.pathname==="/health")return reply({ok:!!env.GITHUB_TOKEN&&!!env.WRITE_PASSWORD,authorized:authorized&&!!env.GITHUB_TOKEN},authorized&&!!env.GITHUB_TOKEN?200:401,allowed);
 if(!env.GITHUB_TOKEN||!env.WRITE_PASSWORD)return reply({error:"Worker secrets not configured"},503,allowed);
 const gh=async(path,method="GET",body=null)=>{
-const opts={method,headers:{"Authorization":"Bearer "+env.GITHUB_TOKEN,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"reading-notes-worker"}};
+const opts={method,headers:{"Authorization":"Bearer "+env.GITHUB_TOKEN,"Accept":"application/vnd.github+json","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"reading-notes-worker"}};
 if(body)opts.body=JSON.stringify(body);
 const r=await fetch("https://api.github.com/repos/"+repo+"/contents/"+path+(method==="GET"?"?ref="+encodeURIComponent(branch):""),opts);
 const txt=await r.text();let json={};try{json=JSON.parse(txt)}catch{}
