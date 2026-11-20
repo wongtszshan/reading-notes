@@ -2,17 +2,36 @@
 // Secrets: GITHUB_TOKEN, WRITE_PASSWORD
 // Vars (optional): APP_ORIGIN=https://wongtszshan.github.io, REPO=wongtszshan/reading-notes, BRANCH=main
 const headers={"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};
-const reply=(obj,status=200,origin="*")=>new Response(JSON.stringify(obj),{status,headers:{...headers,"Access-Control-Allow-Origin":origin,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key","Vary":"Origin"}});
+const reply=(obj,status=200,origin="*")=>new Response(JSON.stringify(obj),{status,headers:{...headers,"Access-Control-Allow-Origin":origin,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key,Authorization","Vary":"Origin"}});
 function constantEqual(a,b){a=String(a||"");b=String(b||"");let diff=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)diff|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return diff===0}
 function allowPath(path){return path==="data/books.json"||/^data\/books\/[a-zA-Z0-9-]{8,80}\/(?:book\.json|cover\.jpg|notes\/[a-zA-Z0-9-]{8,80}\.json)$/.test(path)}
+
+// A signed 30-day bearer token. The existing WRITE_PASSWORD is the signing secret;
+// changing that secret immediately invalidates all issued sessions.
+const SESSION_SECONDS=30*24*60*60;
+const encoder=new TextEncoder();
+function b64url(bytes){let binary="";for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+function decode64(s){let str=atob(s.replace(/-/g,"+").replace(/_/g,"/"));return Uint8Array.from(str,c=>c.charCodeAt(0))}
+async function sign(key,data){const k=await crypto.subtle.importKey("raw",encoder.encode("reading-notes-session-v1:"+key),{name:"HMAC",hash:"SHA-256"},false,["sign"]);return new Uint8Array(await crypto.subtle.sign("HMAC",k,encoder.encode(data)))}
+async function issueToken(key,remember){const payload={v:1,iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+(remember?SESSION_SECONDS:12*60*60),nonce:crypto.randomUUID()};const encoded=b64url(encoder.encode(JSON.stringify(payload)));return "v1."+encoded+"."+b64url(await sign(key,"v1."+encoded))}
+async function verifyToken(key,token){if(!key||typeof token!=="string"||token.length>2048)return false;let parts=token.split(".");if(parts.length!==3||parts[0]!=="v1")return false;try{let payload=JSON.parse(new TextDecoder().decode(decode64(parts[1]))),now=Math.floor(Date.now()/1000);if(payload.v!==1||!Number.isInteger(payload.exp)||!Number.isInteger(payload.iat)||payload.iat>now+60||payload.exp<=now||payload.exp>payload.iat+SESSION_SECONDS)return false;let signature=decode64(parts[2]),actual=await sign(key,"v1."+parts[1]);if(signature.length!==actual.length)return false;let diff=0;for(let i=0;i<signature.length;i++)diff|=signature[i]^actual[i];return diff===0}catch{return false}}
+
 export default {async fetch(request,env){
 const origin=request.headers.get("Origin")||"", allowed=env.APP_ORIGIN||"https://wongtszshan.github.io";
 if(origin&&origin!==allowed)return reply({error:"Origin not allowed"},403,allowed);
-if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":allowed,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key","Vary":"Origin"}});
+if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"Access-Control-Allow-Origin":allowed,"Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Write-Key,Authorization","Vary":"Origin"}});
 const url=new URL(request.url),repo=env.REPO||"wongtszshan/reading-notes",branch=env.BRANCH||"main";
-const authorized=!!env.WRITE_PASSWORD&&constantEqual(request.headers.get("X-Write-Key"),env.WRITE_PASSWORD);
-if(url.pathname==="/health")return reply({ok:!!env.GITHUB_TOKEN&&!!env.WRITE_PASSWORD,authorized:authorized&&!!env.GITHUB_TOKEN},authorized&&!!env.GITHUB_TOKEN?200:401,allowed);
 if(!env.GITHUB_TOKEN||!env.WRITE_PASSWORD)return reply({error:"Worker secrets not configured"},503,allowed);
+if(url.pathname==="/health")return reply({ok:true},200,allowed);
+if(url.pathname==="/auth/login"&&request.method==="POST"){
+let input;try{input=await request.json()}catch{return reply({error:"Invalid JSON"},400,allowed)}
+if(!constantEqual(input?.password,env.WRITE_PASSWORD))return reply({error:"写入口令不正确"},401,allowed);
+const remember=input.remember===true;
+return reply({ok:true,token:await issueToken(env.WRITE_PASSWORD,remember),expiresIn:remember?SESSION_SECONDS:43200},200,allowed);
+}
+const bearer=request.headers.get("Authorization")||"";
+const authorized=bearer.startsWith("Bearer ")&&await verifyToken(env.WRITE_PASSWORD,bearer.slice(7));
+if(url.pathname==="/auth/session")return reply({ok:authorized},authorized?200:401,allowed);
 const gh=async(path,method="GET",body=null)=>{
 const opts={method,headers:{"Authorization":"Bearer "+env.GITHUB_TOKEN,"Accept":"application/vnd.github+json","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"reading-notes-worker"}};
 if(body)opts.body=JSON.stringify(body);
@@ -26,7 +45,7 @@ const r=await gh(path);if(r.status===404)return reply({error:"Not found"},404,al
 if(!r.ok)return reply({error:"GitHub read failed "+r.status},502,allowed);
 return reply({sha:r.json.sha,content:r.json.content,encoding:r.json.encoding},200,allowed);
 }
-if(!authorized)return reply({error:"写入口令不正确"},401,allowed);
+if(!authorized)return reply({error:"登录已过期，请重新验证写入口令"},401,allowed);
 if(!["/write","/delete"].includes(url.pathname)||request.method!=="POST")return reply({error:"Not found"},404,allowed);
 let input;try{input=await request.json()}catch{return reply({error:"Invalid JSON"},400,allowed)}
 const path=String(input.path||"");if(!allowPath(path))return reply({error:"Invalid path"},400,allowed);
