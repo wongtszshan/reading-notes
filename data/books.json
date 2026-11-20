@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "books": []
+  "books": [
+    {
+      "id": "c255fc5c-95f8-4068-97fa-3b9017665c64",
+      "title": "津巴多普通心理学",
+      "author": "[美] 菲利普·津巴多 ",
+      "category": "",
+      "cover": "data/books/c255fc5c-95f8-4068-97fa-3b9017665c64/cover.jpg",
+      "noteCount": 0
+    }
+  ]
 }
