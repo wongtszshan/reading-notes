@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="30" fill="#234d47"/><path d="M30 31q18-7 34 6 16-13 34-6v65q-18-5-34 7-16-12-34-7Z" fill="none" stroke="#faf2df" stroke-width="6" stroke-linejoin="round"/><path d="M64 37v66M40 48h14M40 60h14M75 48h14M75 60h14" stroke="#faf2df" stroke-width="4" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="106" fill="#214c43"/>
+<rect x="21" y="21" width="470" height="470" rx="92" fill="none" stroke="#52796a" stroke-width="3"/>
+<text x="256" y="296" text-anchor="middle" fill="#fff5de" font-family="Noto Serif CJK SC, Songti SC, serif" font-size="248" font-weight="600">知</text>
+<g fill="none" stroke="#dfbf7c" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+<path d="M124 359 Q188 333 256 378 Q324 333 388 359 V418 Q314 397 256 445 Q198 397 124 418 Z"/>
+<path d="M256 378 V445"/>
+</g>
+<g fill="none" stroke="#a5bfae" stroke-width="4" stroke-linecap="round"><path d="M150 379 Q188 367 218 387"/><path d="M294 387 Q326 367 362 379"/></g>
+</svg>
