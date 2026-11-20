@@ -1,0 +1,8 @@
+name = "reading-notes-api"
+main = "src/index.js"
+compatibility_date = "2026-11-20"
+
+[vars]
+REPO = "wongtszshan/reading-notes"
+BRANCH = "main"
+APP_ORIGIN = "https://wongtszshan.github.io"
