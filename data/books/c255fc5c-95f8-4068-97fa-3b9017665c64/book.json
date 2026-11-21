@@ -4,7 +4,9 @@
   "author": "[美] 菲利普·津巴多 ",
   "category": "",
   "cover": "data/books/c255fc5c-95f8-4068-97fa-3b9017665c64/cover.jpg",
-  "noteIds": [],
+  "noteIds": [
+    "cbb57a7d-d172-4899-a8bc-3e41349c09c5"
+  ],
   "createdAt": "2026-11-20T13:55:46.284Z",
-  "updatedAt": "2026-11-20T13:55:46.285Z"
+  "updatedAt": "2026-11-21T02:30:15.069Z"
 }
