@@ -17,13 +17,42 @@ function clearSession(){sessionToken="";sessionExpires=0;password="";try{localSt
 function restoreSession(){try{const saved=JSON.parse(localStorage.getItem(SESSION_KEY)||"null");if(saved&&saved.url===worker&&saved.expires>Date.now()+10000&&typeof saved.token==="string"){sessionToken=saved.token;sessionExpires=saved.expires}else localStorage.removeItem(SESSION_KEY)}catch{}}
 restoreSession();
 function msg(s,error=false){let el=$("notice");el.hidden=false;el.className="notice"+(error?" error":"");el.textContent=s;clearTimeout(msg.timer);msg.timer=setTimeout(()=>el.hidden=true,6000)}
-async function read(path){let r=await fetch(raw(path),{cache:"no-store"});if(r.status===404)return null;if(!r.ok)throw Error("云端读取失败 "+r.status);return r.json()}
+async function read(path){
+if(worker){
+  const response=await fetch(worker+"/file?path="+encodeURIComponent(path),{cache:"no-store"});
+  if(response.status===404)return null;
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error("GitHub 实时读取失败："+(result.error||response.status));
+  if(result.encoding!=="base64"||typeof result.content!=="string")throw Error("云端返回的文件格式不正确："+path);
+  try{
+    const binary=atob(result.content.replace(/\\s/g,""));
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }catch(err){throw Error("笔记文件解析失败："+path+" "+err.message)}
+}
+const r=await fetch(raw(path),{cache:"no-store"});
+if(r.status===404)return null;
+if(!r.ok)throw Error("云端读取失败 "+r.status);
+return r.json()
+}
 async function file(path){if(!worker)throw Error("请先在设置填写 Worker 地址");let r=await fetch(worker+"/file?path="+encodeURIComponent(path));if(r.status===404)return null;let j=await r.json();if(!r.ok)throw Error(j.error||"读取文件版本失败");return j}
 async function request(action,body){if(!worker||!sessionToken||sessionExpires<=Date.now()){clearSession();throw Error("请在设置中验证写入口令")}let r=await fetch(worker+"/"+action,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+sessionToken},body:JSON.stringify(body)});let j=await r.json().catch(()=>({}));if(r.status===401){clearSession();throw Error("登录已失效，请在设置中重新验证写入口令")}if(!r.ok)throw Error(j.error||"GitHub 提交失败");return j}
 async function write(path,data){let f=await file(path);return request("write",{path,sha:f?.sha||null,content:JSON.stringify(data,null,2)+"\n"})}
-async function load(){let d=await read("data/books.json");books=d?.books||[]}
-async function openBook(bid){book=await read("data/books/"+bid+"/book.json");if(!book)throw Error("书籍不存在");notes=(await Promise.all((book.noteIds||[]).map(n=>read("data/books/"+bid+"/notes/"+n+".json").catch(()=>null)))).filter(Boolean);notes.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));view="book";render()}
-async function allNotes(){let all=await Promise.all(books.map(async b=>{let o=await read("data/books/"+b.id+"/book.json");return Promise.all((o?.noteIds||[]).map(async n=>{let x=await read("data/books/"+b.id+"/notes/"+n+".json");return x?{...x,bookTitle:b.title}:null}))}));return all.flat().filter(Boolean)}
+async function load(){let d=await read("data/books.json");if(!d||!Array.isArray(d.books))throw Error("书架索引暂时无法读取，请勿创建新书覆盖数据");books=d.books}
+async function openBook(bid){
+const latestBook=await read("data/books/"+bid+"/book.json");
+if(!latestBook)throw Error("书籍文件不存在，请检查 GitHub");
+const noteIds=latestBook.noteIds||[];
+const loaded=await Promise.all(noteIds.map(async id=>{
+  const note=await read("data/books/"+bid+"/notes/"+id+".json");
+  if(!note)throw Error("有笔记暂时无法加载（"+id.slice(0,8)+"），没有删除数据，请重新读取云端");
+  return note
+}));
+book=latestBook;
+notes=loaded.sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""));
+view="book";render()
+}
+async function allNotes(){let all=await Promise.all(books.map(async b=>{let o=await read("data/books/"+b.id+"/book.json");return Promise.all((o?.noteIds||[]).map(async n=>{let x=await read("data/books/"+b.id+"/notes/"+n+".json");if(!x)throw Error("知识卡暂时无法加载："+n.slice(0,8));return {...x,bookTitle:b.title}}))}));return all.flat().filter(Boolean)}
 function cover(b){return b.cover?'<img alt="封面" src="'+esc(base+b.cover)+'">':'<div class="cover-fallback">'+esc(b.title)+'</div>'}
 function header(title,sub,action=""){return '<div class="hero"><div><div class="eyebrow">PERSONAL READING ARCHIVE</div><h1 class="h1">'+esc(title)+'</h1><p class="sub">'+esc(sub)+'</p></div>'+action+'</div>'}
 function rows(data){return data.length?'<div class="note-list">'+data.map(n=>'<div class="note-row"><button data-note="'+esc(n.id)+'" data-bid="'+esc(n.bookId)+'"><div class="note-title">'+esc(n.topic)+'</div><p class="sub line-clamp">'+esc(n.final?.summary||n.original?.understanding||"")+'</p><span class="chip '+(n.status==="draft"?"draft":"")+'">'+(n.status==="draft"?"待讨论":"知识卡")+'</span> <small class="muted">'+esc((n.updatedAt||"").slice(0,10))+'</small></button><button class="btn secondary small" data-edit="'+esc(n.id)+'" data-bid="'+esc(n.bookId)+'">编辑</button></div>').join("")+'</div>':'<div class="empty">暂无笔记。用自己的话解释一个概念，就可以开始。</div>'}
